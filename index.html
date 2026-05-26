@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>TradingClock Pro — Global Sessions in IST</title>
+  <meta name="description" content="Live global trading sessions in Indian Standard Time. Gold, Crypto, Forex with AI assistant, heatmaps, MCX calculator and live prices."/>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    html,body{background:#0f1117;color:#e8eaf0;font-family:system-ui,-apple-system,sans-serif;min-height:100vh}
+    ::-webkit-scrollbar{width:6px;height:6px}
+    ::-webkit-scrollbar-track{background:#181c24}
+    ::-webkit-scrollbar-thumb{background:#2a2f3d;border-radius:3px}
+    input::placeholder{color:#4a5068}
+    input:focus{border-color:#378add !important}
+    button:hover{opacity:0.85}
+    .fade-in{animation:fadeIn 0.3s ease}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:translateY(0)}}
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+const D = {
+  bg:"#0f1117",bg2:"#181c24",bg3:"#1e2330",bg4:"#242938",
+  border:"#2a2f3d",border2:"#353d52",
+  text:"#e8eaf0",text2:"#8b92a8",text3:"#4a5068",
+  red:"#e24b4a",amber:"#ef9f27",green:"#1d9e75",
+  blue:"#378add",purple:"#7f77dd",teal:"#5dcaa5",
+};
+
+const SESSIONS = {
+  gold:[
+    {name:"MCX India",city:"Mumbai",o:10,c:23.5,col:"#ef9f27",mkt:"bullish",note:"India primary gold market"},
+    {name:"Asian markets",city:"Tokyo · Shanghai",o:5.5,c:14.5,col:"#7f77dd",mkt:"sideways",note:"Slow price discovery"},
+    {name:"London open",city:"London · Zurich",o:13.5,c:21.5,col:"#378add",mkt:"bullish",note:"Institutional orders, sharp moves"},
+    {name:"New York / COMEX",city:"New York",o:18.5,c:3.5,col:"#e24b4a",mkt:"bullish",note:"COMEX drives global gold price"},
+    {name:"Dead zone",city:"All thin",o:3.5,c:5.5,col:"#4a5068",mkt:"sideways",note:"Wide spreads, avoid entries"},
+  ],
+  crypto:[
+    {name:"Asian session",city:"Japan · Korea · China",o:5.5,c:14.5,col:"#7f77dd",mkt:"bullish",note:"Retail altcoin pumps"},
+    {name:"European open",city:"London · Frankfurt",o:13.5,c:21.5,col:"#378add",mkt:"bullish",note:"BTC volume rises"},
+    {name:"US session",city:"New York · Chicago",o:18.5,c:3.5,col:"#e24b4a",mkt:"bearish",note:"Largest moves — biggest dumps"},
+    {name:"NYSE open",city:"New York",o:21,c:22,col:"#1d9e75",mkt:"bullish",note:"Biggest single-hour catalyst"},
+    {name:"Overnight thin",city:"Global",o:3.5,c:5.5,col:"#4a5068",mkt:"sideways",note:"BTC consolidates"},
+  ],
+  forex:[
+    {name:"Sydney",city:"Australia",o:4.5,c:13.5,col:"#1d9e75",mkt:"sideways",note:"AUD/NZD pairs, quiet"},
+    {name:"Tokyo",city:"Japan",o:5.5,c:14.5,col:"#7f77dd",mkt:"sideways",note:"USD/JPY, EUR/JPY active"},
+    {name:"London",city:"United Kingdom",o:13.5,c:21.5,col:"#378add",mkt:"bullish",note:"Highest daily volume globally"},
+    {name:"Frankfurt",city:"Germany",o:14,c:22,col:"#5dcaa5",mkt:"bullish",note:"EUR pairs spike at open"},
+    {name:"New York",city:"USA",o:18.5,c:3.5,col:"#e24b4a",mkt:"bearish",note:"USD strength decided here"},
+    {name:"Dead zone",city:"All thin",o:3.5,c:4.5,col:"#4a5068",mkt:"sideways",note:"Never trade this"},
+  ],
+};
+
+const OVS = {
+  gold:[
+    {name:"London + New York",ist:"6:30 PM – 10:30 PM",note:"Best gold window",o:19,c:23},
+    {name:"MCX + COMEX",ist:"6:30 PM – 11:30 PM",note:"India + US overlap",o:18.5,c:23.5},
+    {name:"Asian + London",ist:"1:30 PM – 2:30 PM",note:"Brief spike",o:13.5,c:14.5},
+  ],
+  crypto:[
+    {name:"EU + US overlap",ist:"6:30 PM – 10:30 PM",note:"Peak BTC/ETH volatility",o:19,c:23},
+    {name:"NYSE open spike",ist:"9:00 PM – 10:00 PM",note:"Biggest single candle",o:21,c:22},
+    {name:"Asia + EU",ist:"1:30 PM – 2:30 PM",note:"Altcoin spikes",o:13.5,c:14.5},
+  ],
+  forex:[
+    {name:"London + New York",ist:"6:30 PM – 10:30 PM",note:"Highest forex volume",o:19,c:23},
+    {name:"Frankfurt + London",ist:"2 PM – 10 PM",note:"EUR pairs most active",o:14,c:22},
+    {name:"Tokyo + London",ist:"1:30 PM – 2:30 PM",note:"Brief crossover spike",o:13.5,c:14.5},
+  ],
+};
+
+const ALARMS_DEF = {
+  gold:[
+    {name:"MCX India open",ist:10,label:"10:00 AM IST"},
+    {name:"London open",ist:13.5,label:"1:30 PM IST"},
+    {name:"COMEX / NY open",ist:18.5,label:"6:30 PM IST"},
+  ],
+  crypto:[
+    {name:"Asian session",ist:5.5,label:"5:30 AM IST"},
+    {name:"EU open",ist:13.5,label:"1:30 PM IST"},
+    {name:"NYSE open",ist:21,label:"9:00 PM IST"},
+  ],
+  forex:[
+    {name:"Tokyo open",ist:5.5,label:"5:30 AM IST"},
+    {name:"London open",ist:13.5,label:"1:30 PM IST"},
+    {name:"New York open",ist:18.5,label:"6:30 PM IST"},
+  ],
+};
+
+const HEATMAP = {
+  gold: [1,1,1,1,2,3,4,5,5,6,7,7,6,8,8,9,9,10,10,9,8,7,5,3],
+  crypto:[3,3,2,2,2,4,5,6,6,7,7,7,6,8,8,9,9,10,10,9,8,7,5,4],
+  forex: [1,1,1,1,2,4,5,6,6,7,6,6,5,9,9,9,8,10,10,9,7,5,3,2],
+};
+
+const WEEKLY = {
+  gold:[[1,1,1,1,2,3,4,5,5,6,7,7,6,8,8,9,9,10,10,9,8,7,5,3],[1,1,1,1,2,3,4,5,5,6,7,7,6,8,8,9,9,10,10,9,8,7,5,3],[1,1,1,1,2,3,4,5,5,6,7,7,6,8,8,9,9,10,10,9,8,7,5,3],[1,1,1,1,2,3,4,5,5,6,7,7,6,8,8,9,9,10,10,9,8,7,5,3],[2,2,2,2,2,3,4,5,5,6,7,7,6,8,8,9,9,10,10,9,8,7,5,3],[1,1,1,1,1,2,3,3,3,4,4,4,4,5,5,5,5,6,6,5,4,3,2,1],[1,1,1,1,1,1,2,2,2,2,2,2,2,3,3,3,3,3,3,3,2,2,1,1]],
+  crypto:[[3,3,2,2,2,4,5,6,6,7,7,7,6,8,8,9,9,10,10,9,8,7,5,4],[3,3,2,2,2,4,5,6,6,7,7,7,6,8,8,9,9,10,10,9,8,7,5,4],[3,3,2,2,2,4,5,6,6,7,7,7,6,8,8,9,9,10,10,9,8,7,5,4],[3,3,2,2,2,4,5,6,6,7,7,7,6,8,8,9,9,10,10,9,8,7,5,4],[3,3,2,2,2,4,5,6,6,7,7,7,6,8,8,9,9,10,10,9,8,7,5,4],[2,2,2,2,2,3,4,5,5,6,6,6,5,6,6,7,7,8,8,7,6,5,4,3],[2,2,2,2,2,3,4,5,5,6,6,6,5,6,6,7,7,8,8,7,6,5,4,3]],
+  forex:[[1,1,1,1,2,4,5,6,6,7,6,6,5,9,9,9,8,10,10,9,7,5,3,2],[1,1,1,1,2,4,5,6,6,7,6,6,5,9,9,9,8,10,10,9,7,5,3,2],[1,1,1,1,2,4,5,6,6,7,6,6,5,9,9,9,8,10,10,9,7,5,3,2],[1,1,1,1,2,4,5,6,6,7,6,6,5,9,9,9,8,10,10,9,7,5,3,2],[1,1,1,1,2,4,5,6,6,7,6,6,5,9,9,9,8,10,10,9,7,5,3,2],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]],
+};
+
+const MCX_LOTS = {
+  gold:{lotSize:100,unit:"grams",margin:0.04,label:"Gold (1 lot = 100g)"},
+  silver:{lotSize:30,unit:"kg",margin:0.05,label:"Silver (1 lot = 30kg)"},
+  crudeoil:{lotSize:100,unit:"barrels",margin:0.06,label:"Crude Oil (100 bbl)"},
+};
+
+const CALENDAR = {
+  gold:[
+    {time:"8:30 PM IST",event:"US NFP",day:"1st Fri monthly",impact:"high",note:"Biggest gold mover"},
+    {time:"8:30 PM IST",event:"US CPI",day:"2nd Wed monthly",impact:"high",note:"Inflation → gold direction"},
+    {time:"11:30 PM IST",event:"FOMC Meeting",day:"8x per year",impact:"high",note:"Fed rate decisions"},
+    {time:"2:30 PM IST",event:"ECB Rate Decision",day:"8x per year",impact:"high",note:"EUR & gold mover"},
+    {time:"6:00 PM IST",event:"US ISM Manufacturing",day:"1st Mon",impact:"med",note:"USD strength signal"},
+  ],
+  crypto:[
+    {time:"8:30 PM IST",event:"US CPI",day:"2nd Wed monthly",impact:"high",note:"Biggest BTC catalyst"},
+    {time:"11:30 PM IST",event:"FOMC Decision",day:"8x per year",impact:"high",note:"Rate hikes dump BTC"},
+    {time:"9:00 PM IST",event:"NYSE open",day:"Mon–Fri",impact:"high",note:"Daily volatility spike"},
+    {time:"8:30 PM IST",event:"US NFP",day:"1st Fri monthly",impact:"high",note:"Risk-on/off signal"},
+    {time:"8A/4P/12A IST",event:"Funding rate reset",day:"Every 8 hrs",impact:"med",note:"Long/short squeeze signal"},
+  ],
+  forex:[
+    {time:"8:30 PM IST",event:"US NFP",day:"1st Fri monthly",impact:"high",note:"Largest USD move"},
+    {time:"8:30 PM IST",event:"US CPI",day:"2nd Wed monthly",impact:"high",note:"DXY direction setter"},
+    {time:"11:30 PM IST",event:"FOMC Statement",day:"8x per year",impact:"high",note:"All USD pairs react"},
+    {time:"2:30 PM IST",event:"ECB Rate Decision",day:"8x per year",impact:"high",note:"EUR pairs 100+ pip moves"},
+    {time:"6:30 AM IST",event:"BOJ Decision",day:"8x per year",impact:"high",note:"JPY pairs volatility"},
+  ],
+};
+
+const QUICK_PROMPTS = [
+  "Should I trade gold right now?",
+  "Best time to trade BTC today?",
+  "What's the London–NY overlap strategy?",
+  "How to trade NFP news?",
+  "Explain MCX margin for gold",
+  "Is now a good time for forex?",
+];
+
+function istNow(){
+  const n=new Date();
+  let h=n.getUTCHours()+n.getUTCMinutes()/60+n.getUTCSeconds()/3600+5.5;
+  if(h>=24)h-=24; return h;
+}
+function isOpen(o,c,now){if(o<c)return now>=o&&now<c;return now>=o||now<c;}
+function fmt(h){
+  if(h<0)h+=24;if(h>=24)h-=24;
+  let hh=Math.floor(h),mm=h%1===0.5?'30':'00';
+  return `${hh%12||12}:${mm} ${hh<12?'AM':'PM'}`;
+}
+function pct(h){if(h<0)h+=24;if(h>=24)h-=24;return(h/24*100);}
+function heatColor(v){
+  if(v<=2)return '#1a2235';if(v<=4)return '#1d3a5c';
+  if(v<=6)return '#1a5e3a';if(v<=8)return '#7a4d0a';return '#8b1a1a';
+}
+function fmtP(v){if(v==null)return '--';return v>=100?'$'+Math.round(v).toLocaleString():'$'+Number(v).toFixed(2);}
+function fmtC(v){if(v==null)return '--';return(v>=0?'+':'')+Number(v).toFixed(2)+'%';}
+
+function App(){
+  const [tab,setTab]=useState('gold');
+  const [nav,setNav]=useState('sessions');
+  const [ist,setIst]=useState(istNow());
+  const [now,setNow]=useState(new Date());
+  const [prices,setPrices]=useState({btc:null,eth:null,gold:null,btcC:null,ethC:null,goldC:null});
+  const [armed,setArmed]=useState({});
+  const [watchlist,setWatchlist]=useState(['bitcoin','ethereum','pax-gold','solana','binancecoin']);
+  const [wPrices,setWPrices]=useState({});
+  const [mcxCom,setMcxCom]=useState('gold');
+  const [mcxPrice,setMcxPrice]=useState('');
+  const [mcxLots,setMcxLots]=useState('1');
+  const [msgs,setMsgs]=useState([{role:'assistant',content:"Hi! I'm your AI trading assistant 🤖\n\nI know your current session data, live prices, and market context. Ask me anything about trading strategy, sessions, or when to enter/exit.\n\nTry a quick prompt below or type your own question."}]);
+  const [aiInput,setAiInput]=useState('');
+  const [aiLoading,setAiLoading]=useState(false);
+  const chatEnd=useRef(null);
+  const inputRef=useRef(null);
+
+  useEffect(()=>{const t=setInterval(()=>{setIst(istNow());setNow(new Date());},1000);return()=>clearInterval(t);},[]);
+  useEffect(()=>{fetchAll();const t=setInterval(fetchAll,30000);return()=>clearInterval(t);},[]);
+  useEffect(()=>{chatEnd.current?.scrollIntoView({behavior:'smooth'});},[msgs]);
+
+  async function fetchAll(){
+    try{
+      const ids=watchlist.join(',');
+      const r=await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_change=true`);
+      const d=await r.json();
+      setPrices({btc:d.bitcoin?.usd??null,eth:d.ethereum?.usd??null,gold:d['pax-gold']?.usd??null,btcC:d.bitcoin?.usd_24h_change??null,ethC:d.ethereum?.usd_24h_change??null,goldC:d['pax-gold']?.usd_24h_change??null});
+      setWPrices(d);
+    }catch(e){}
+  }
+
+  function toggleAlarm(i){
+    const key=`${tab}-${i}`;
+    setArmed(a=>({...a,[key]:!a[key]}));
+    if(!armed[`${tab}-${i}`]&&Notification.permission==='default')Notification.requestPermission();
+  }
+
+  useEffect(()=>{
+    const alms=ALARMS_DEF[tab]||[];
+    alms.forEach((a,i)=>{
+      const key=`${tab}-${i}`;if(!armed[key])return;
+      const diff=Math.abs(ist-a.ist)*60;
+      if(diff<1){
+        setArmed(ar=>({...ar,[key]:false}));
+        if(Notification.permission==='granted')new Notification('Session Alert',{body:`${a.name} opening now! (${a.label})`});
+        else alert(`⏰ ${a.name} opening now!`);
+      }
+    });
+  },[ist]);
+
+  function getCD(){
+    const ss=SESSIONS[tab].filter(s=>!s.name.includes('Dead')&&!s.name.includes('thin'));
+    let best=null,bd=99;
+    ss.forEach(s=>{if(isOpen(s.o,s.c,ist))return;let d=s.o-ist;if(d<0)d+=24;if(d<bd){bd=d;best=s;}});
+    if(!best)return null;
+    const ts=Math.round(bd*3600),h=Math.floor(ts/3600),m=Math.floor((ts%3600)/60),s=ts%60;
+    return{label:`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`,sess:best.name};
+  }
+
+  function buildCtx(){
+    const open=SESSIONS[tab].filter(s=>isOpen(s.o,s.c,ist)).map(s=>s.name).join(', ')||'None';
+    const ovs=OVS[tab].filter(ov=>ov.o===-1||isOpen(ov.o,ov.c,ist)).map(o=>o.name).join(', ')||'None';
+    const cd=getCD();
+    return `You are an expert trading assistant for Gold, Crypto, and Forex markets with deep knowledge of Indian markets (MCX).
+LIVE CONTEXT (IST):
+- Time: ${now.toLocaleTimeString('en-IN',{timeZone:'Asia/Kolkata'})}
+- Date: ${now.toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',timeZone:'Asia/Kolkata'})}
+- Market tab: ${tab.toUpperCase()}
+- Open sessions: ${open}
+- Active overlaps: ${ovs}
+- Next session: ${cd?`${cd.label} (${cd.sess})`:'All open'}
+LIVE PRICES:
+- BTC: ${fmtP(prices.btc)} (${fmtC(prices.btcC)} 24h)
+- ETH: ${fmtP(prices.eth)} (${fmtC(prices.ethC)} 24h)
+- PAX Gold: ${fmtP(prices.gold)} (${fmtC(prices.goldC)} 24h)
+SESSIONS:
+${SESSIONS[tab].map(s=>`- ${s.name}: ${isOpen(s.o,s.c,ist)?'OPEN':'CLOSED'} | ${fmt(s.o)}-${fmt(s.c)} | Bias: ${s.mkt}`).join('\n')}
+Rules: Give practical IST-specific advice. Be concise. Warn about dead zones. Max 200 words unless detailed explanation needed.`;
+  }
+
+  async function sendMsg(txt){
+    const text=(txt||aiInput).trim();if(!text||aiLoading)return;
+    setAiInput('');
+    setMsgs(m=>[...m,{role:'user',content:text}]);
+    setAiLoading(true);
+    try{
+      const history=msgs.slice(-8);
+      const res=await fetch('https://api.anthropic.com/v1/messages',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:1000,system:buildCtx(),messages:[...history.map(m=>({role:m.role,content:m.content})),{role:'user',content:text}]}),
+      });
+      const data=await res.json();
+      const reply=data.content?.find(c=>c.type==='text')?.text||'Sorry, could not get a response.';
+      setMsgs(m=>[...m,{role:'assistant',content:reply}]);
+    }catch(e){setMsgs(m=>[...m,{role:'assistant',content:'Connection error. Please try again.'}]);}
+    setAiLoading(false);
+  }
+
+  const cd=getCD();
+  const nowPct=ist/24*100;
+  const timeStr=now.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',second:'2-digit',timeZone:'Asia/Kolkata'});
+  const dateStr=now.toLocaleDateString('en-IN',{weekday:'long',day:'numeric',month:'long',timeZone:'Asia/Kolkata'});
+
+  const card={background:D.bg2,border:`1px solid ${D.border}`,borderRadius:'10px',padding:'0.75rem 1rem',marginBottom:'8px'};
+  const lbl={fontSize:'10px',color:D.text3,letterSpacing:'0.07em',marginBottom:'6px',marginTop:'1rem'};
+  const tabBtn=(on)=>({padding:'5px 16px',borderRadius:'20px',border:`1px solid ${on?D.text:D.border}`,fontSize:'13px',cursor:'pointer',background:on?D.text:'transparent',color:on?D.bg:D.text2,fontWeight:500,transition:'all 0.15s'});
+  const navBtn=(on)=>({padding:'7px 13px',borderRadius:'8px',border:`1px solid ${on?D.border2:D.border}`,fontSize:'12px',cursor:'pointer',background:on?D.bg3:'transparent',color:on?D.text:D.text3,fontWeight:on?500:400});
+  const pill=(c)=>({display:'inline-flex',alignItems:'center',gap:'3px',fontSize:'10px',padding:'2px 7px',borderRadius:'20px',background:c+'18',color:c,border:`1px solid ${c}33`,whiteSpace:'nowrap'});
+
+  const mcxData=MCX_LOTS[mcxCom];
+  const pn=parseFloat(mcxPrice)||0,ln=parseInt(mcxLots)||1;
+  const tv=pn*mcxData.lotSize*ln,mr=tv*mcxData.margin,pl=tv*0.01;
+
+  const navItems=[
+    {id:'sessions',label:'📊 Sessions'},
+    {id:'ai',label:'🤖 AI Chat'},
+    {id:'heatmap',label:'🌡 Heatmap'},
+    {id:'calendar',label:'📅 Calendar'},
+    {id:'watchlist',label:'👁 Watchlist'},
+    {id:'mcx',label:'₹ MCX Calc'},
+  ];
+
+  const wkDays=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+  const hrs=Array.from({length:24},(_,i)=>i);
+
+  return (
+    <div style={{maxWidth:'820px',margin:'0 auto',padding:'16px'}}>
+      {/* Top bar */}
+      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:'20px',flexWrap:'wrap',gap:'12px',padding:'12px 16px',background:D.bg2,borderRadius:'12px',border:`1px solid ${D.border}`}}>
+        <div style={{display:'flex',alignItems:'center',gap:'16px'}}>
+          <div>
+            <div style={{fontSize:'13px',fontWeight:700,color:D.amber,letterSpacing:'0.05em'}}>📈 TRADINGCLOCK PRO</div>
+            <div style={{fontSize:'11px',color:D.text3}}>Global sessions in IST</div>
+          </div>
+          <div style={{width:'1px',height:'36px',background:D.border}}/>
+          <div>
+            <div style={{fontSize:'24px',fontWeight:500,fontVariantNumeric:'tabular-nums',lineHeight:1}}>{timeStr}</div>
+            <div style={{fontSize:'11px',color:D.text2}}>{dateStr}</div>
+          </div>
+        </div>
+        <div style={{display:'flex',gap:'6px'}}>
+          {['gold','crypto','forex'].map(t=>(
+            <button key={t} style={tabBtn(tab===t)} onClick={()=>setTab(t)}>{t.charAt(0).toUpperCase()+t.slice(1)}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* Prices */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'8px',marginBottom:'12px'}}>
+        {[
+          {label:'Bitcoin',sym:'BTC',icon:'₿',col:'#ef9f27',val:prices.btc,chg:prices.btcC},
+          {label:'Ethereum',sym:'ETH',icon:'◈',col:'#7f77dd',val:prices.eth,chg:prices.ethC},
+          {label:'PAX Gold',sym:'PAXG',icon:'◆',col:'#ef9f27',val:prices.gold,chg:prices.goldC},
+        ].map(p=>(
+          <div key={p.sym} style={{...card,marginBottom:0,padding:'0.75rem'}}>
+            <div style={{fontSize:'10px',color:D.text3,marginBottom:'3px',display:'flex',gap:'4px',alignItems:'center'}}>
+              <span style={{color:p.col}}>{p.icon}</span>{p.sym}
+            </div>
+            <div style={{fontSize:'16px',fontWeight:500,fontVariantNumeric:'tabular-nums'}}>{fmtP(p.val)}</div>
+            <div style={{fontSize:'11px',marginTop:'2px',color:p.chg==null?D.text3:p.chg>=0?D.green:D.red}}>{fmtC(p.chg)} 24h</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Countdown */}
+      {cd&&(
+        <div style={{...card,display:'flex',alignItems:'center',gap:'14px',marginBottom:'12px',background:`linear-gradient(135deg,${D.bg2},${D.bg3})`}}>
+          <span style={{fontSize:'24px'}}>⏱</span>
+          <div>
+            <div style={{fontSize:'11px',color:D.text2,marginBottom:'1px'}}>Next session opens in</div>
+            <div style={{fontSize:'22px',fontWeight:600,fontVariantNumeric:'tabular-nums',color:D.amber}}>{cd.label}</div>
+            <div style={{fontSize:'11px',color:D.text3}}>→ {cd.sess}</div>
+          </div>
+        </div>
+      )}
+
+      {/* Nav */}
+      <div style={{display:'flex',gap:'5px',marginBottom:'14px',flexWrap:'wrap',padding:'8px',background:D.bg2,borderRadius:'10px',border:`1px solid ${D.border}`}}>
+        {navItems.map(n=>(
+          <button key={n.id} style={navBtn(nav===n.id)} onClick={()=>setNav(n.id)}>{n.label}</button>
+        ))}
+      </div>
+
+      {/* SESSIONS */}
+      {nav==='sessions'&&(
+        <div className="fade-in">
+          <div style={{fontSize:'10px',color:D.text3,display:'flex',justifyContent:'space-between',marginBottom:'4px',padding:'0 2px'}}>
+            {['12 AM','3 AM','6 AM','9 AM','12 PM','3 PM','6 PM','9 PM','12 AM'].map(l=><span key={l}>{l}</span>)}
+          </div>
+          <div style={{position:'relative',height:'8px',background:D.bg3,borderRadius:'4px',marginBottom:'16px'}}>
+            <div style={{position:'absolute',top:'-4px',left:`${nowPct}%`,width:'2px',height:'16px',background:D.red,borderRadius:'1px',transform:'translateX(-50%)'}}/>
+          </div>
+          {SESSIONS[tab].map((s,i)=>{
+            const open=isOpen(s.o,s.c,ist);
+            const segs=s.o<s.c?[{l:pct(s.o),w:pct(s.c)-pct(s.o)}]:[{l:0,w:pct(s.c)},{l:pct(s.o),w:100-pct(s.o)}];
+            const mc=s.mkt==='bullish'?D.green:s.mkt==='bearish'?D.red:D.amber;
+            return(
+              <div key={i} onClick={()=>{setNav('ai');setAiInput(`Tell me about the ${s.name} session right now`);setTimeout(()=>inputRef.current?.focus(),100);}}
+                style={{...card,borderLeft:`3px solid ${open?s.col:D.border}`,borderRadius:'0 10px 10px 0',padding:'0.625rem 0.875rem',marginBottom:'6px',cursor:'pointer',transition:'background 0.15s'}}>
+                <div style={{display:'flex',alignItems:'center',gap:'8px',flexWrap:'wrap'}}>
+                  <div style={{width:'8px',height:'8px',borderRadius:'50%',background:s.col,opacity:open?1:0.3,flexShrink:0}}/>
+                  <span style={{fontSize:'13px',fontWeight:500,flex:1}}>{s.name} <span style={{fontSize:'11px',fontWeight:400,color:D.text3}}>{s.city}</span></span>
+                  <span style={pill(mc)}>{s.mkt==='bullish'?'↑':s.mkt==='bearish'?'↓':'→'} {s.mkt}</span>
+                  <span style={{fontSize:'11px',color:D.text2,whiteSpace:'nowrap'}}>{fmt(s.o)}–{fmt(s.c)}</span>
+                  <span style={{fontSize:'10px',padding:'2px 8px',borderRadius:'20px',background:open?D.green+'15':D.bg3,color:open?D.green:D.text3,border:`1px solid ${open?D.green+'33':D.border}`}}>{open?'● Open':'Closed'}</span>
+                </div>
+                <div style={{position:'relative',height:'4px',background:D.bg3,borderRadius:'2px',margin:'7px 0 4px'}}>
+                  {segs.map((sg,j)=><div key={j} style={{position:'absolute',top:0,left:`${sg.l}%`,width:`${sg.w}%`,height:'4px',borderRadius:'2px',background:s.col,opacity:open?0.85:0.18}}/>)}
+                  <div style={{position:'absolute',top:'-3px',left:`${nowPct}%`,width:'2px',height:'10px',background:D.red,borderRadius:'1px',transform:'translateX(-50%)'}}/>
+                </div>
+                <div style={{fontSize:'11px',color:D.text3}}>{s.note} <span style={{opacity:0.5}}>· tap to ask AI →</span></div>
+              </div>
+            );
+          })}
+          <div style={lbl}>OVERLAP WINDOWS</div>
+          {OVS[tab].map((ov,i)=>{
+            const hot=ov.o===-1||isOpen(ov.o,ov.c,ist);
+            return(
+              <div key={i} style={{display:'flex',alignItems:'center',gap:'8px',padding:'0.5rem 0.875rem',borderRadius:'8px',background:hot?D.amber+'10':D.bg2,border:`1px solid ${hot?D.amber+'44':D.border}`,marginBottom:'5px',flexWrap:'wrap'}}>
+                <span style={{color:hot?D.amber:D.text3}}>⇄</span>
+                <span style={{fontSize:'12px',fontWeight:500,color:hot?D.amber:D.text,flex:1}}>{ov.name}</span>
+                <span style={{fontSize:'11px',color:D.text2}}>{ov.ist}</span>
+                <span style={{fontSize:'10px',color:D.text3}}>· {ov.note}</span>
+              </div>
+            );
+          })}
+          <div style={{...card,marginTop:'12px'}}>
+            <div style={{fontSize:'12px',fontWeight:500,color:D.text2,marginBottom:'10px'}}>🔔 Session Alarms</div>
+            {(ALARMS_DEF[tab]||[]).map((a,i)=>{
+              const key=`${tab}-${i}`,on=!!armed[key];
+              return(
+                <div key={i} style={{display:'flex',alignItems:'center',gap:'8px',marginBottom:'8px'}}>
+                  <span style={{fontSize:'14px',color:on?D.green:D.text3}}>🔔</span>
+                  <span style={{fontSize:'13px',color:D.text,flex:1}}>{a.name}</span>
+                  <span style={{fontSize:'11px',color:D.text3}}>{a.label}</span>
+                  <button onClick={()=>toggleAlarm(i)} style={{background:on?D.green+'18':'transparent',border:`1px solid ${on?D.green+'44':D.border}`,color:on?D.green:D.text2,fontSize:'11px',padding:'3px 12px',borderRadius:'20px',cursor:'pointer'}}>{on?'Armed':'Set'}</button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* AI CHAT */}
+      {nav==='ai'&&(
+        <div className="fade-in" style={{display:'flex',flexDirection:'column',gap:'10px'}}>
+          <div style={{display:'flex',gap:'5px',flexWrap:'wrap'}}>
+            {QUICK_PROMPTS.map((p,i)=>(
+              <button key={i} onClick={()=>sendMsg(p)} disabled={aiLoading}
+                style={{fontSize:'11px',padding:'5px 12px',borderRadius:'20px',border:`1px solid ${D.border}`,background:D.bg3,color:D.text2,cursor:'pointer'}}>
+                {p}
+              </button>
+            ))}
+          </div>
+          <div style={{background:D.bg2,border:`1px solid ${D.border}`,borderRadius:'12px',padding:'1rem',height:'420px',overflowY:'auto',display:'flex',flexDirection:'column',gap:'12px'}}>
+            {msgs.map((msg,i)=>(
+              <div key={i} style={{display:'flex',justifyContent:msg.role==='user'?'flex-end':'flex-start'}}>
+                <div style={{maxWidth:'85%',padding:'0.75rem 1rem',borderRadius:msg.role==='user'?'12px 12px 2px 12px':'12px 12px 12px 2px',background:msg.role==='user'?D.blue+'22':D.bg3,border:`1px solid ${msg.role==='user'?D.blue+'33':D.border}`,fontSize:'13px',lineHeight:1.7,whiteSpace:'pre-wrap'}}>
+                  {msg.role==='assistant'&&<div style={{fontSize:'10px',color:D.text3,marginBottom:'5px',fontWeight:500}}>🤖 AI ASSISTANT</div>}
+                  {msg.content}
+                </div>
+              </div>
+            ))}
+            {aiLoading&&(
+              <div style={{display:'flex',justifyContent:'flex-start'}}>
+                <div style={{padding:'0.75rem 1rem',borderRadius:'12px 12px 12px 2px',background:D.bg3,border:`1px solid ${D.border}`,fontSize:'13px',color:D.text3}}>
+                  🤖 Thinking...
+                </div>
+              </div>
+            )}
+            <div ref={chatEnd}/>
+          </div>
+          <div style={{display:'flex',gap:'8px'}}>
+            <input ref={inputRef} value={aiInput} onChange={e=>setAiInput(e.target.value)}
+              onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&sendMsg()}
+              placeholder="Ask about sessions, strategy, when to trade..."
+              disabled={aiLoading}
+              style={{flex:1,background:D.bg3,border:`1px solid ${D.border}`,borderRadius:'10px',padding:'11px 16px',color:D.text,fontSize:'13px',outline:'none'}}/>
+            <button onClick={()=>sendMsg()} disabled={aiLoading||!aiInput.trim()}
+              style={{padding:'11px 20px',borderRadius:'10px',background:aiLoading||!aiInput.trim()?D.bg3:D.blue,border:`1px solid ${D.border}`,color:D.text,fontSize:'13px',cursor:'pointer',fontWeight:600}}>
+              {aiLoading?'...':'Send ↑'}
+            </button>
+          </div>
+          <div style={{fontSize:'11px',color:D.text3,textAlign:'center'}}>AI has live context: current IST time · open sessions · live prices</div>
+        </div>
+      )}
+
+      {/* HEATMAP */}
+      {nav==='heatmap'&&(
+        <div className="fade-in">
+          <div style={lbl}>WEEKLY VOLATILITY HEATMAP — {tab.toUpperCase()} (hours in IST)</div>
+          <div style={{...card,overflowX:'auto'}}>
+            <div style={{minWidth:'480px'}}>
+              <div style={{display:'grid',gridTemplateColumns:'36px repeat(24,1fr)',gap:'2px',marginBottom:'4px'}}>
+                <div/>
+                {hrs.map(h=><div key={h} style={{fontSize:'8px',color:D.text3,textAlign:'center'}}>{h===0?'12A':h===12?'12P':h<12?`${h}A`:`${h-12}P`}</div>)}
+              </div>
+              {wkDays.map((day,di)=>(
+                <div key={day} style={{display:'grid',gridTemplateColumns:'36px repeat(24,1fr)',gap:'2px',marginBottom:'2px'}}>
+                  <div style={{fontSize:'10px',color:D.text3,display:'flex',alignItems:'center'}}>{day}</div>
+                  {hrs.map(h=>{
+                    const v=WEEKLY[tab][di][h];
+                    const isNow=di===(new Date().getDay()+6)%7&&Math.floor(ist)===h;
+                    return(
+                      <div key={h} title={`${day} ${h}:00 IST — Vol: ${v}/10`}
+                        style={{height:'18px',borderRadius:'2px',background:isNow?D.red:heatColor(v),border:isNow?`1px solid ${D.red}`:undefined,display:'flex',alignItems:'center',justifyContent:'center'}}>
+                        <span style={{fontSize:'7px',color:'rgba(255,255,255,0.6)',fontWeight:600}}>{v>=8?v:''}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+              <div style={{display:'flex',gap:'10px',marginTop:'10px',alignItems:'center',flexWrap:'wrap'}}>
+                <span style={{fontSize:'10px',color:D.text3}}>Low</span>
+                {[[2,'#1a2235'],[4,'#1d3a5c'],[6,'#1a5e3a'],[8,'#7a4d0a'],[10,'#8b1a1a']].map(([v,c])=>(
+                  <div key={v} style={{display:'flex',alignItems:'center',gap:'3px'}}>
+                    <div style={{width:'14px',height:'14px',borderRadius:'2px',background:c}}/>
+                    <span style={{fontSize:'10px',color:D.text3}}>{v}</span>
+                  </div>
+                ))}
+                <span style={{fontSize:'10px',color:D.text3}}>High</span>
+              </div>
+            </div>
+          </div>
+          <div style={lbl}>TODAY'S VOLATILITY BY HOUR</div>
+          <div style={card}>
+            <div style={{display:'flex',alignItems:'flex-end',gap:'2px',height:'60px'}}>
+              {HEATMAP[tab].map((v,h)=>(
+                <div key={h} title={`${h}:00 IST — ${v}/10`} style={{flex:1,height:`${v*6}px`,background:Math.floor(ist)===h?D.red:heatColor(v),borderRadius:'2px 2px 0 0'}}/>
+              ))}
+            </div>
+            <div style={{display:'flex',justifyContent:'space-between',marginTop:'5px'}}>
+              {['12 AM','6 AM','12 PM','6 PM','12 AM'].map(l=><span key={l} style={{fontSize:'9px',color:D.text3}}>{l}</span>)}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CALENDAR */}
+      {nav==='calendar'&&(
+        <div className="fade-in">
+          <div style={lbl}>HIGH-IMPACT EVENTS — {tab.toUpperCase()}</div>
+          {CALENDAR[tab].map((ev,i)=>{
+            const col=ev.impact==='high'?D.red:D.amber;
+            return(
+              <div key={i} onClick={()=>{setNav('ai');setAiInput(`How should I trade ${ev.event} for ${tab}?`);setTimeout(()=>inputRef.current?.focus(),100);}}
+                style={{...card,marginBottom:'7px',display:'flex',gap:'12px',alignItems:'flex-start',cursor:'pointer'}}>
+                <div style={{fontSize:'10px',padding:'3px 8px',borderRadius:'20px',background:col+'18',color:col,border:`1px solid ${col}33`,fontWeight:600,whiteSpace:'nowrap',flexShrink:0,marginTop:'1px'}}>{ev.impact.toUpperCase()}</div>
+                <div>
+                  <div style={{fontSize:'14px',fontWeight:500,marginBottom:'3px'}}>{ev.event}</div>
+                  <div style={{fontSize:'12px',color:D.text2,marginBottom:'2px'}}>⏰ {ev.time} &nbsp;·&nbsp; 📅 {ev.day}</div>
+                  <div style={{fontSize:'11px',color:D.text3}}>{ev.note} <span style={{opacity:0.5}}>· tap to ask AI</span></div>
+                </div>
+              </div>
+            );
+          })}
+          <div style={{...card,marginTop:'4px'}}>
+            <div style={{fontSize:'12px',color:D.text3,lineHeight:1.7}}>
+              💡 Spreads widen 15 min before high-impact news.<br/>
+              Avoid new entries 30 min before FOMC/NFP.<br/>
+              Tap any event to ask the AI for strategy.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* WATCHLIST */}
+      {nav==='watchlist'&&(
+        <div className="fade-in">
+          <div style={lbl}>LIVE WATCHLIST — refreshes every 30s</div>
+          {watchlist.map(id=>{
+            const d=wPrices[id],price=d?.usd??null,chg=d?.usd_24h_change??null;
+            const label=id==='pax-gold'?'PAX Gold':id==='binancecoin'?'BNB':id==='avalanche-2'?'AVAX':id==='matic-network'?'MATIC':id.charAt(0).toUpperCase()+id.slice(1).split('-')[0];
+            return(
+              <div key={id} onClick={()=>{setNav('ai');setAiInput(`Analyse ${label}: is it a good time to buy or sell?`);setTimeout(()=>inputRef.current?.focus(),100);}}
+                style={{...card,display:'flex',alignItems:'center',gap:'10px',marginBottom:'6px',cursor:'pointer'}}>
+                <div style={{flex:1,fontSize:'13px',fontWeight:500}}>{label}</div>
+                <div style={{fontSize:'16px',fontWeight:500,fontVariantNumeric:'tabular-nums'}}>{fmtP(price)}</div>
+                <div style={{fontSize:'12px',minWidth:'60px',textAlign:'right',fontVariantNumeric:'tabular-nums',color:chg==null?D.text3:chg>=0?D.green:D.red}}>{fmtC(chg)}</div>
+                <button onClick={e=>{e.stopPropagation();setWatchlist(w=>w.filter(x=>x!==id));}} style={{background:'transparent',border:'none',color:D.text3,cursor:'pointer',fontSize:'14px',padding:'2px 4px'}}>✕</button>
+              </div>
+            );
+          })}
+          <div style={{...card,marginTop:'4px'}}>
+            <div style={{fontSize:'12px',color:D.text2,marginBottom:'8px',fontWeight:500}}>Add to watchlist</div>
+            <div style={{display:'flex',flexWrap:'wrap',gap:'6px'}}>
+              {['solana','cardano','ripple','polkadot','chainlink','avalanche-2','dogecoin','litecoin','uniswap','matic-network'].filter(x=>!watchlist.includes(x)).map(id=>(
+                <button key={id} onClick={()=>setWatchlist(w=>[...w,id])}
+                  style={{background:D.bg3,border:`1px solid ${D.border}`,color:D.text2,fontSize:'11px',padding:'4px 12px',borderRadius:'20px',cursor:'pointer'}}>
+                  + {id==='avalanche-2'?'AVAX':id==='matic-network'?'MATIC':id.charAt(0).toUpperCase()+id.slice(1).split('-')[0]}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MCX CALC */}
+      {nav==='mcx'&&(
+        <div className="fade-in">
+          <div style={lbl}>MCX MARGIN CALCULATOR</div>
+          <div style={card}>
+            <div style={{marginBottom:'12px'}}>
+              <div style={{fontSize:'11px',color:D.text3,marginBottom:'6px'}}>Select Commodity</div>
+              <div style={{display:'flex',gap:'7px',flexWrap:'wrap'}}>
+                {Object.entries(MCX_LOTS).map(([k])=>(
+                  <button key={k} style={tabBtn(mcxCom===k)} onClick={()=>setMcxCom(k)}>{k.charAt(0).toUpperCase()+k.slice(1)}</button>
+                ))}
+              </div>
+            </div>
+            <div style={{fontSize:'12px',color:D.text3,marginBottom:'12px'}}>{mcxData.label}</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'12px',marginBottom:'16px'}}>
+              <div>
+                <div style={{fontSize:'11px',color:D.text3,marginBottom:'5px'}}>Price per {mcxData.unit} (₹)</div>
+                <input type="number" value={mcxPrice} onChange={e=>setMcxPrice(e.target.value)} placeholder="e.g. 7500"
+                  style={{width:'100%',background:D.bg3,border:`1px solid ${D.border}`,borderRadius:'8px',padding:'9px 12px',color:D.text,fontSize:'14px',outline:'none'}}/>
+              </div>
+              <div>
+                <div style={{fontSize:'11px',color:D.text3,marginBottom:'5px'}}>Number of lots</div>
+                <input type="number" value={mcxLots} onChange={e=>setMcxLots(e.target.value)} placeholder="1" min="1"
+                  style={{width:'100%',background:D.bg3,border:`1px solid ${D.border}`,borderRadius:'8px',padding:'9px 12px',color:D.text,fontSize:'14px',outline:'none'}}/>
+              </div>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:'8px',marginBottom:'14px'}}>
+              {[
+                {label:'Total contract value',val:pn>0?'₹'+tv.toLocaleString('en-IN',{maximumFractionDigits:0}):'—',col:D.text},
+                {label:`Margin required (~${Math.round(mcxData.margin*100)}%)`,val:pn>0?'₹'+mr.toLocaleString('en-IN',{maximumFractionDigits:0}):'—',col:D.amber},
+                {label:'P&L per 1% move',val:pn>0?'₹'+pl.toLocaleString('en-IN',{maximumFractionDigits:0}):'—',col:D.green},
+                {label:'Lot size',val:`${mcxData.lotSize} ${mcxData.unit}`,col:D.text},
+              ].map((r,i)=>(
+                <div key={i} style={{background:D.bg3,borderRadius:'8px',padding:'0.75rem'}}>
+                  <div style={{fontSize:'10px',color:D.text3,marginBottom:'4px'}}>{r.label}</div>
+                  <div style={{fontSize:'18px',fontWeight:600,color:r.col,fontVariantNumeric:'tabular-nums'}}>{r.val}</div>
+                </div>
+              ))}
+            </div>
+            <button onClick={()=>{setNav('ai');setAiInput(`I'm trading ${mcxCom} on MCX with ${ln} lot${ln>1?'s':''} at ₹${mcxPrice||'X'} per ${mcxData.unit}. Risk and should I trade now?`);setTimeout(()=>inputRef.current?.focus(),100);}}
+              style={{width:'100%',padding:'10px',borderRadius:'8px',background:D.blue+'18',border:`1px solid ${D.blue+'44'}`,color:D.blue,fontSize:'13px',cursor:'pointer',fontWeight:600,marginBottom:'10px'}}>
+              🤖 Ask AI about this trade
+            </button>
+            <div style={{fontSize:'11px',color:D.text3,lineHeight:1.6}}>
+              ⚠️ Margin % is approximate. Check your broker for exact SPAN + exposure margin. MCX margins change on expiry week.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Footer */}
+      <div style={{marginTop:'20px',padding:'12px 16px',background:D.bg2,borderRadius:'10px',border:`1px solid ${D.border}`,display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'8px'}}>
+        <div style={{fontSize:'11px',color:D.text3}}>📈 TradingClock Pro · Built for Indian traders</div>
+        <div style={{fontSize:'11px',color:D.text3}}>Prices via CoinGecko · AI by Claude · All times IST</div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
